@@ -13,7 +13,7 @@ function App() {
   const [typingUser, setTypingUser] = useState('');
   const inputRef = useRef(null);       // for autofocus
   const bottomRef = useRef(null);      // for auto scroll
-
+  const [room, setRoom] = useState('general');
 
   useEffect(() => {
     if (token) {
@@ -44,6 +44,13 @@ function App() {
   }, [token]);
 
   useEffect(() => {
+    if (socket && token) {
+      socket.emit('join-room', room);
+      socket.emit('get-history', room); // get room-specific history
+    }
+  }, [room]);
+
+  useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -68,9 +75,16 @@ function App() {
   const sendMessage = (e) => {
     e.preventDefault();
     if (message.trim()) {
-      socket.emit('send-message', message);
+      socket.emit('send-message', { text: message, room });
       setMessage('');
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    setToken(null);
+    setUsername('');
   };
 
   if (!token) {
@@ -86,11 +100,13 @@ function App() {
 
   return (
     <div style={{ maxWidth: 600, margin: '2rem auto', fontFamily: 'Arial' }}>
+      <button onClick={handleLogout} style={{ float: 'right' }}>🚪 Logout</button>
       <h2>💬 Welcome, {username}</h2>
-      <button onClick={() => {
-        localStorage.removeItem('token');
-        window.location.reload();
-      }}>Logout</button>
+      <select value={room} onChange={(e) => setRoom(e.target.value)}>
+        <option value="general">General</option>
+        <option value="tech">Tech</option>
+        <option value="marketing">Marketing</option>
+      </select>
       <div style={{ border: '1px solid #ccc', height: 300, overflowY: 'auto', padding: 10 }}>
         {chat.map((msg, i) => (
           <div key={i} style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>

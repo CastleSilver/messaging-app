@@ -88,31 +88,46 @@ io.use((socket, next) => {
       console.error('JWT verification failed:', err.message);
       next(new Error('Authentication failed'));
     }
-    console.log(`✅ ${socket.user.username} connected`);
 });
   
 io.on('connection', (socket) => {
-    socket.on('send-message', async (text) => {
+    console.log(`✅ ${socket.user.username} connected`);
+    socket.on('join-room', async (room) => {
+        if (socket.room) {
+            socket.leave(socket.room);
+        }
+        socket.join(room);
+        socket.room = room;
+      
+        const messages = await Message.find({ room }).sort({ timestamp: 1 }).limit(50);
+        socket.emit('chat-history', messages);
+    });
+
+    socket.on('send-message', async ({ text, room }) => {
       try {
+        const targetRoom = room || socket.room || 'general';
         const msg = new Message({
           text,
           username: socket.user.username, // ✅ get from decoded JWT
           timestamp: new Date(),
+          room: room || socket.room || 'general',
         });
         await msg.save();
-        io.emit('receive-message', msg);
+        io.to(targetRoom).emit('receive-message', msg);
       } catch (err) {
-        console.error('JWT or DB error:', err);
+        console.error('Message send error:', err);
       }
     });
 
     socket.on('get-history', async () => {
-        const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+        const room = socket.room || 'general';
+        const messages = await Message.find({ room }).sort({ timestamp: 1 }).limit(50);
         socket.emit('chat-history', messages);
     });
 
     socket.on('typing', () => {
-        socket.broadcast.emit('user-typing', socket.user.username);
+        const room = socket.room || 'general';
+        socket.to(room).emit('user-typing', socket.user.username);
     });
 });
   
