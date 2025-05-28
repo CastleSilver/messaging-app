@@ -108,9 +108,11 @@ io.on('connection', (socket) => {
         const targetRoom = room || socket.room || 'general';
         const msg = new Message({
           text,
-          username: socket.user.username, // ✅ get from decoded JWT
+          username: socket.user.username,
+          userId: socket.user.userId,
           timestamp: new Date(),
           room: room || socket.room || 'general',
+          readBy: [socket.user.userId],
         });
         await msg.save();
         io.to(targetRoom).emit('receive-message', msg);
@@ -126,8 +128,31 @@ io.on('connection', (socket) => {
     });
 
     socket.on('typing', () => {
-        const room = socket.room || 'general';
-        socket.to(room).emit('user-typing', socket.user.username);
+        if (socket.user?.username) {
+            const room = socket.room || 'general';
+            socket.to(room).emit('user-typing', socket.user.username);
+        }
+    });
+
+    socket.on('mark-read', async (messageId) => {
+        try {
+          const userId = socket.user.userId;
+          const msg = await Message.findById(messageId);
+      
+          if (!msg) return;
+      
+          if (!msg.readBy.includes(userId)) {
+            msg.readBy.push(userId);
+            await msg.save();
+
+            io.to(msg.room).emit('message-read', {
+                messageId,
+                userId
+            });
+          }
+        } catch (err) {
+          console.error('Error marking message as read:', err);
+        }
     });
 });
   
