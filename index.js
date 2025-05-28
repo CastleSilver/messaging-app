@@ -4,9 +4,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 require('dotenv').config();
 const User = require('./models/User'); // your User model
+const Message = require('./models/Message');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 const app = express();
 const server = http.createServer(app); // Create HTTP server
 const cors = require('cors');
@@ -59,7 +59,11 @@ app.post('/signup', async (req, res) => {
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).send('Invalid credentials');
   
-      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
+      const token = jwt.sign(
+        { userId: user._id, username: user.username },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
       res.json({ token });
     } catch (err) {
       console.error(err);
@@ -70,28 +74,45 @@ app.post('/signup', async (req, res) => {
 // ✅ New: Handle WebSocket events
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("No token"));
+  
+    if (!token) {
+      return next(new Error('No token provided'));
+    }
   
     try {
-      const user = jwt.verify(token, JWT_SECRET);
-      socket.user = user;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Decoded token:', decoded); // check what's inside
+      socket.user = decoded; // Now you can use socket.user.username
       next();
     } catch (err) {
-      return next(new Error("Invalid token"));
+      console.error('JWT verification failed:', err.message);
+      next(new Error('Authentication failed'));
     }
+    console.log(`✅ ${socket.user.username} connected`);
 });
   
 io.on('connection', (socket) => {
-    console.log(`✅ ${socket.user.username} connected`);
-  
-    socket.on('send-message', (msg) => {
-      const messageData = {
-        username: socket.user.username,
-        text: msg,
-        timestamp: new Date()
-      };
-  
-      io.emit('receive-message', messageData);
+    socket.on('send-message', async (text) => {
+      try {
+        const msg = new Message({
+          text,
+          username: socket.user.username, // ✅ get from decoded JWT
+          timestamp: new Date(),
+        });
+        await msg.save();
+        io.emit('receive-message', msg);
+      } catch (err) {
+        console.error('JWT or DB error:', err);
+      }
+    });
+
+    socket.on('get-history', async () => {
+        const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+        socket.emit('chat-history', messages);
+    });
+
+    socket.on('typing', () => {
+        socket.broadcast.emit('user-typing', socket.user.username);
     });
 });
   
