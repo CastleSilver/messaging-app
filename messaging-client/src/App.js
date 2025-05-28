@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import axios from 'axios';
 
@@ -11,6 +11,9 @@ function App() {
   const [message, setMessage] = useState('');
   const [chat, setChat] = useState([]);
   const [typingUser, setTypingUser] = useState('');
+  const inputRef = useRef(null);       // for autofocus
+  const bottomRef = useRef(null);      // for auto scroll
+
 
   useEffect(() => {
     if (token) {
@@ -39,6 +42,18 @@ function App() {
       return () => socket.disconnect();
     }
   }, [token]);
+
+  useEffect(() => {
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chat]);
+  
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);  
 
   const login = async () => {
     try {
@@ -77,32 +92,26 @@ function App() {
         window.location.reload();
       }}>Logout</button>
       <div style={{ border: '1px solid #ccc', height: 300, overflowY: 'auto', padding: 10 }}>
-      {chat.map((msg, i) => (
-        <div key={i} style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
-          {/* Placeholder avatar: first letter of username */}
-          <div style={{
-            width: 30,
-            height: 30,
-            borderRadius: '50%',
-            backgroundColor: '#007bff',
-            color: 'white',
-            textAlign: 'center',
-            lineHeight: '30px',
-            marginRight: 10,
-            fontWeight: 'bold'
-          }}>
-            {msg.username[0].toUpperCase()}
+        {chat.map((msg, i) => (
+          <div key={i} style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: '50%', backgroundColor: '#007bff',
+              color: 'white', textAlign: 'center', lineHeight: '30px', marginRight: 10, fontWeight: 'bold'
+              }}>
+              {msg.username[0].toUpperCase()}
+            </div>
+            <div>
+              <strong>{msg.username}</strong>: {msg.text} <br />
+              <small style={{ color: 'gray' }}>{new Date(msg.timestamp).toLocaleTimeString()}</small>
+            </div>
           </div>
-          <div>
-            <strong>{msg.username}</strong>: {msg.text} <br />
-            <small style={{ color: 'gray' }}>{new Date(msg.timestamp).  toLocaleTimeString()}</small>
-          </div>
-        </div>
-      ))}
-      {typingUser && <div><em>{typingUser} is typing...</em></div>}
+        ))}
+        {typingUser && <div><em>{typingUser} is typing...</em></div>}
+        <div ref={bottomRef} />
       </div>
       <form onSubmit={sendMessage}>
         <input
+          ref={inputRef}
           value={message}
           onChange={(e) => {
             setMessage(e.target.value);
