@@ -6,17 +6,22 @@ require('dotenv').config();
 const User = require('./models/User'); // your User model
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 const app = express();
 const server = http.createServer(app); // Create HTTP server
+const cors = require('cors');
 const io = new Server(server, {
-  cors: {
-    origin: "*", // allow frontend requests for now (can restrict later)
-    methods: ["GET", "POST"]
-  }
+    cors: {
+      origin: "http://localhost:3000",
+      methods: ["GET", "POST"]
+    }
 });
 
 app.use(express.json());
+app.use(cors({
+    origin: 'http://localhost:3000', // frontend
+    credentials: true
+  }));
 
 // DB connect
 mongoose.connect(process.env.MONGO_URI)
@@ -42,7 +47,7 @@ app.post('/signup', async (req, res) => {
       console.error(err);
       res.status(400).send('Error creating user');
     }
-  });
+});
 
   app.post('/login', async (req, res) => {
     const { username, password } = req.body;
@@ -60,21 +65,35 @@ app.post('/signup', async (req, res) => {
       console.error(err);
       res.status(500).send('Login error');
     }
-  });
+});
     
 // ✅ New: Handle WebSocket events
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error("No token"));
+  
+    try {
+      const user = jwt.verify(token, JWT_SECRET);
+      socket.user = user;
+      next();
+    } catch (err) {
+      return next(new Error("Invalid token"));
+    }
+});
+  
 io.on('connection', (socket) => {
-    console.log('🔌 New client connected:', socket.id);
+    console.log(`✅ ${socket.user.username} connected`);
   
-    socket.on('send-message', (message) => {
-      console.log('📩 Message received:', message);
-      io.emit('receive-message', message); // broadcast to all clients
-    });
+    socket.on('send-message', (msg) => {
+      const messageData = {
+        username: socket.user.username,
+        text: msg,
+        timestamp: new Date()
+      };
   
-    socket.on('disconnect', () => {
-      console.log('❌ Client disconnected:', socket.id);
+      io.emit('receive-message', messageData);
     });
-  });
+});
   
   const PORT = process.env.PORT || 8080;
   server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
